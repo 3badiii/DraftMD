@@ -600,7 +600,6 @@ export default function Home() {
   };
 
   const switchMode = (nextMode: ViewMode) => {
-    if (mode === "write") syncFromWrite();
     if (mode === "raw" && editorRef.current) editorRef.current.innerHTML = markdownToHtml(markdown);
     setMode(nextMode);
   };

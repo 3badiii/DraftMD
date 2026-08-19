@@ -54,6 +54,7 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /draggable/);
   assert.match(page, /onDragStart/);
   assert.match(page, /onDrop/);
+  assert.doesNotMatch(page, /if \(mode === "write"\) syncFromWrite\(\)/);
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
   assert.match(packageJson, /"name": "draftmd"/);
