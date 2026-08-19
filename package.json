@@ -6,7 +6,6 @@
   "private": true,
   "license": "MIT",
   "keywords": ["markdown", "editor", "gfm", "wysiwyg", "notes"],
-  "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=22.13.0"
   },

@@ -91,19 +91,9 @@ DraftMD starts and opens automatically in the default browser.
 
 ## Manual installation
 
-### npm
-
 ```bash
 npm install
 npm run dev
-```
-
-### pnpm
-
-```bash
-corepack enable
-pnpm install
-pnpm run dev
 ```
 
 Open `http://localhost:3000` if the browser is not already open.
