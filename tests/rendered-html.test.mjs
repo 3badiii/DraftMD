@@ -50,6 +50,10 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /indexedDB\.open/);
   assert.match(page, /persistStoredSession/);
   assert.match(page, /const \[dark, setDark\] = useState\(true\)/);
+  assert.match(page, /const reorderDocuments/);
+  assert.match(page, /draggable/);
+  assert.match(page, /onDragStart/);
+  assert.match(page, /onDrop/);
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
   assert.match(packageJson, /"name": "draftmd"/);

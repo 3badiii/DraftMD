@@ -53,6 +53,7 @@ Documents are processed locally in the browser. DraftMD has no account system, s
 - GitHub Flavored Markdown parsing and rendering
 - Synchronized Write, Raw Markdown, and Preview modes
 - Multiple open documents with independent names and save states
+- Drag-and-drop file tabs with persistent custom ordering
 - Automatic local session recovery after a refresh or browser restart
 - Searchable document outline with heading navigation
 - Open one or several `.md`, `.markdown`, or text files
@@ -106,6 +107,7 @@ Open `http://localhost:3000` if the browser is not already open.
 - Select `+` in the file tab bar to create a new document.
 - Select `Open` to choose one or several Markdown files.
 - Switch between documents using the tabs.
+- Drag a file tab onto another tab to change its position. The custom order is restored with the local session.
 - An amber dot identifies unsaved changes.
 
 ### Write and format

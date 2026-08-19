@@ -272,6 +272,8 @@ export default function Home() {
   const [outlineFilter, setOutlineFilter] = useState("");
   const [insertDialog, setInsertDialog] = useState<InsertDialog | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
+  const [dragOverDocumentId, setDragOverDocumentId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
   const activeDocument = documents.find((document) => document.id === activeId) || documents[0];
   const { filename, markdown, saved } = activeDocument;
@@ -469,6 +471,27 @@ export default function Home() {
     }
   };
 
+  const reorderDocuments = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setDocuments((current) => {
+      const sourceIndex = current.findIndex((document) => document.id === sourceId);
+      const targetIndex = current.findIndex((document) => document.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+
+      const reordered = [...current];
+      const [movedDocument] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, movedDocument);
+      return reordered;
+    });
+    setDraggedDocumentId(null);
+    setDragOverDocumentId(null);
+  };
+
+  const finishDocumentDrag = () => {
+    setDraggedDocumentId(null);
+    setDragOverDocumentId(null);
+  };
+
   const addOpenedDocuments = (openedDocuments: EditorDocument[]) => {
     if (!openedDocuments.length) return;
     const selectedDocument = openedDocuments[openedDocuments.length - 1];
@@ -624,7 +647,29 @@ export default function Home() {
         <div className="file-tabs-bar">
           <div className="file-tabs" role="tablist" aria-label="Open documents">
             {documents.map((document) => (
-              <div className={`file-tab ${document.id === activeId ? "active" : ""}`} key={document.id}>
+              <div
+                className={`file-tab ${document.id === activeId ? "active" : ""} ${document.id === draggedDocumentId ? "dragging" : ""} ${document.id === dragOverDocumentId ? "drag-over" : ""}`}
+                draggable
+                key={document.id}
+                title="Drag to reorder"
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", document.id);
+                  setDraggedDocumentId(document.id);
+                }}
+                onDragOver={(event) => {
+                  if (draggedDocumentId === document.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  if (draggedDocumentId) setDragOverDocumentId(document.id);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const sourceId = draggedDocumentId || event.dataTransfer.getData("text/plain");
+                  if (sourceId) reorderDocuments(sourceId, document.id);
+                }}
+                onDragEnd={finishDocumentDrag}
+              >
                 <button className="file-tab-select" role="tab" aria-selected={document.id === activeId} onClick={() => activateDocument(document.id)}>
                   <Icon name="file" /><span>{document.filename}</span>{!document.saved && <i aria-label="Unsaved changes" />}
                 </button>
