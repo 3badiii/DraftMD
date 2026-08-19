@@ -42,7 +42,14 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /Document outline/);
   assert.match(page, /Choose image from device/);
   assert.match(page, /https:\/\/github\.com\/3badiii/);
-  assert.match(page, /multiple hidden onChange=\{openFile\}/);
+  assert.match(page, /multiple hidden onChange=\{openFileInput\}/);
+  assert.match(page, /showOpenFilePicker/);
+  assert.match(page, /showSaveFilePicker/);
+  assert.match(page, /createWritable/);
+  assert.match(page, /Save As/);
+  assert.match(page, /indexedDB\.open/);
+  assert.match(page, /persistStoredSession/);
+  assert.match(page, /const \[dark, setDark\] = useState\(true\)/);
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
   assert.match(packageJson, /"name": "draftmd"/);

@@ -33,7 +33,7 @@ Write visually, edit the raw Markdown, preview the result, and save clean `.md` 
 
 DraftMD is a browser-based visual Markdown editor built for README files, notes, documentation, command references, and technical writing. It combines a familiar rich-text writing surface with direct access to GitHub Flavored Markdown (GFM).
 
-Documents are processed locally in the browser. DraftMD has no account system, database, analytics service, or document-upload backend.
+Documents are processed locally in the browser. DraftMD has no account system, server-side database, analytics service, or document-upload backend.
 
 ## Why DraftMD?
 
@@ -53,9 +53,10 @@ Documents are processed locally in the browser. DraftMD has no account system, d
 - GitHub Flavored Markdown parsing and rendering
 - Synchronized Write, Raw Markdown, and Preview modes
 - Multiple open documents with independent names and save states
+- Automatic local session recovery after a refresh or browser restart
 - Searchable document outline with heading navigation
 - Open one or several `.md`, `.markdown`, or text files
-- Save the active document directly as a `.md` download
+- Save supported files back to their original location or use Save As for a new copy
 - Insert links without unsupported browser prompts
 - Insert remote or local images with optional width and height
 - GitHub-inspired light and dark themes
@@ -124,7 +125,11 @@ Local images are embedded as Data URLs so the saved Markdown document remains se
 
 ### Save a document
 
-Select `Save` to download the active document as a `.md` file. Browser security rules prevent a website from silently overwriting the original local file.
+In Edge, Chrome, and other supported Chromium browsers, select `Open` to grant DraftMD access to a Markdown file. After editing, select `Save` to write changes back to that original file. The browser asks for write permission before the first update.
+
+Select `Save As` to choose a different name or location. Browsers without the File System Access API fall back to downloading a new `.md` file instead of overwriting the original.
+
+DraftMD restores open documents and unsaved changes from local browser storage after a refresh. A browser may ask for file permission again before updating an original file in a restored session.
 
 ## Supported Markdown
 
@@ -192,7 +197,7 @@ draftmd/
 
 ## Privacy and security
 
-- Document text and selected images remain in the browser unless the user explicitly saves or shares them.
+- Document text, selected images, and session recovery data remain in local browser storage unless the user explicitly saves or shares them.
 - Rendered HTML is sanitized with DOMPurify.
 - Script, style, iframe, object, and embed elements are blocked from rendered documents.
 - Inline color attributes are removed to preserve readability in both themes.
@@ -204,7 +209,6 @@ Preview and outline updates are deferred so typing remains responsive. Large ima
 
 ## Roadmap
 
-- [ ] Automatic local draft recovery
 - [ ] Side-by-side editor and preview
 - [ ] Keyboard shortcuts
 - [ ] Find and replace

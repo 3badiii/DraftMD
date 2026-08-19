@@ -8,7 +8,27 @@ import { gfm } from "turndown-plugin-gfm";
 
 type ViewMode = "write" | "raw" | "preview";
 type OutlineHeading = { depth: number; id: string; text: string };
-type EditorDocument = { id: string; filename: string; markdown: string; saved: boolean };
+type DraftWritableFile = { write: (data: string) => Promise<void>; close: () => Promise<void> };
+type DraftFileHandle = {
+  name: string;
+  getFile: () => Promise<File>;
+  createWritable: () => Promise<DraftWritableFile>;
+  queryPermission: (options: { mode: "readwrite" }) => Promise<PermissionState>;
+  requestPermission: (options: { mode: "readwrite" }) => Promise<PermissionState>;
+};
+type FilePickerWindow = Window & {
+  showOpenFilePicker?: (options?: object) => Promise<DraftFileHandle[]>;
+  showSaveFilePicker?: (options?: object) => Promise<DraftFileHandle>;
+};
+type EditorDocument = { id: string; filename: string; markdown: string; saved: boolean; fileHandle?: DraftFileHandle };
+type StoredSession = {
+  version: 1;
+  documents: EditorDocument[];
+  activeId: string;
+  mode: ViewMode;
+  dark: boolean;
+  outlineOpen: boolean;
+};
 type InsertDialog = { kind: "link" | "image"; url: string; label: string; width: string; height: string; fileName?: string; error?: string };
 
 marked.setOptions({ gfm: true, breaks: false });
@@ -16,6 +36,16 @@ marked.setOptions({ gfm: true, breaks: false });
 const subscribeToClient = () => () => {};
 const getClientSnapshot = () => true;
 const getServerSnapshot = () => false;
+const sessionDatabaseName = "draftmd-local";
+const sessionStoreName = "sessions";
+const currentSessionKey = "current";
+const markdownFileTypes = [{
+  description: "Markdown files",
+  accept: {
+    "text/markdown": [".md", ".markdown"],
+    "text/plain": [".txt"],
+  },
+}];
 
 const starterMarkdown = `# Create better Markdown, visually
 
@@ -119,6 +149,103 @@ function normalizeImageDimension(value: string) {
   return String(Math.min(4000, Math.max(1, parsed)));
 }
 
+function normalizeMarkdownFilename(value: string) {
+  return /\.(md|markdown)$/i.test(value) ? value : `${value}.md`;
+}
+
+async function writeFileHandle(handle: DraftFileHandle, content: string) {
+  let permission = await handle.queryPermission({ mode: "readwrite" });
+  if (permission !== "granted") permission = await handle.requestPermission({ mode: "readwrite" });
+  if (permission !== "granted") return false;
+
+  const writable = await handle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return true;
+}
+
+function isStoredSession(value: unknown): value is StoredSession {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<StoredSession>;
+  return session.version === 1
+    && Array.isArray(session.documents)
+    && session.documents.length > 0
+    && session.documents.every((item) => Boolean(item)
+      && typeof item.id === "string"
+      && typeof item.filename === "string"
+      && typeof item.markdown === "string"
+      && typeof item.saved === "boolean")
+    && typeof session.activeId === "string"
+    && (session.mode === "write" || session.mode === "raw" || session.mode === "preview")
+    && typeof session.dark === "boolean"
+    && typeof session.outlineOpen === "boolean";
+}
+
+function openSessionDatabase() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(sessionDatabaseName, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(sessionStoreName)) request.result.createObjectStore(sessionStoreName);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readStoredSession() {
+  const database = await openSessionDatabase();
+  return new Promise<StoredSession | null>((resolve, reject) => {
+    const transaction = database.transaction(sessionStoreName, "readonly");
+    const request = transaction.objectStore(sessionStoreName).get(currentSessionKey);
+    request.onsuccess = () => resolve(isStoredSession(request.result) ? request.result : null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => database.close();
+  });
+}
+
+async function writeStoredSession(session: StoredSession) {
+  const database = await openSessionDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(sessionStoreName, "readwrite");
+    try {
+      transaction.objectStore(sessionStoreName).put(session, currentSessionKey);
+    } catch (error) {
+      database.close();
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(transaction.error);
+    };
+    transaction.onabort = () => {
+      database.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+async function persistStoredSession(session: StoredSession) {
+  try {
+    await writeStoredSession(session);
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "DataCloneError") throw error;
+    await writeStoredSession({
+      ...session,
+      documents: session.documents.map((document) => ({
+        id: document.id,
+        filename: document.filename,
+        markdown: document.markdown,
+        saved: document.saved,
+      })),
+    });
+  }
+}
+
 function Icon({ name }: { name: string }) {
   const paths: Record<string, React.ReactNode> = {
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></>,
@@ -140,10 +267,11 @@ export default function Home() {
   const [documents, setDocuments] = useState<EditorDocument[]>([{ id: "welcome", filename: "README.md", markdown: starterMarkdown, saved: true }]);
   const [activeId, setActiveId] = useState("welcome");
   const [mode, setMode] = useState<ViewMode>("write");
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [outlineFilter, setOutlineFilter] = useState("");
   const [insertDialog, setInsertDialog] = useState<InsertDialog | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const isClient = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
   const activeDocument = documents.find((document) => document.id === activeId) || documents[0];
   const { filename, markdown, saved } = activeDocument;
@@ -153,8 +281,46 @@ export default function Home() {
   }, [activeId]);
 
   useEffect(() => {
-    if (editorRef.current && !editorRef.current.innerHTML) editorRef.current.innerHTML = markdownToHtml(starterMarkdown);
+    let cancelled = false;
+    const restoreSession = async () => {
+      let restoredMarkdown = starterMarkdown;
+      try {
+        const session = await readStoredSession();
+        if (session && !cancelled) {
+          const restoredActiveId = session.documents.some((item) => item.id === session.activeId) ? session.activeId : session.documents[0].id;
+          restoredMarkdown = session.documents.find((item) => item.id === restoredActiveId)?.markdown || session.documents[0].markdown;
+          setDocuments(session.documents);
+          setActiveId(restoredActiveId);
+          setMode(session.mode);
+          setDark(session.dark);
+          setOutlineOpen(session.outlineOpen);
+        }
+      } catch (error) {
+        console.error("DraftMD could not restore the local session.", error);
+      } finally {
+        if (!cancelled) {
+          window.requestAnimationFrame(() => {
+            if (editorRef.current) editorRef.current.innerHTML = markdownToHtml(restoredMarkdown);
+          });
+          setSessionReady(true);
+        }
+      }
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    const timeout = window.setTimeout(() => {
+      void persistStoredSession({ version: 1, documents, activeId, mode, dark, outlineOpen })
+        .catch((error) => console.error("DraftMD could not save the local session.", error));
+    }, 150);
+    return () => window.clearTimeout(timeout);
+  }, [activeId, dark, documents, mode, outlineOpen, sessionReady]);
 
   const syncFromWrite = useCallback(() => {
     if (!editorRef.current) return markdown;
@@ -303,33 +469,111 @@ export default function Home() {
     }
   };
 
-  const openFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
-    const openedDocuments = await Promise.all(files.map(async (file): Promise<EditorDocument> => ({
-      id: crypto.randomUUID(),
-      filename: file.name.endsWith(".md") || file.name.endsWith(".markdown") ? file.name : `${file.name}.md`,
-      markdown: await file.text(),
-      saved: true,
-    })));
+  const addOpenedDocuments = (openedDocuments: EditorDocument[]) => {
+    if (!openedDocuments.length) return;
     const selectedDocument = openedDocuments[openedDocuments.length - 1];
     setDocuments((current) => [...current, ...openedDocuments]);
     setActiveId(selectedDocument.id);
     if (editorRef.current) editorRef.current.innerHTML = markdownToHtml(selectedDocument.markdown);
     setMode("write");
     setOutlineFilter("");
+  };
+
+  const openFileInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    const openedDocuments = await Promise.all(files.map(async (file): Promise<EditorDocument> => ({
+      id: crypto.randomUUID(),
+      filename: normalizeMarkdownFilename(file.name),
+      markdown: await file.text(),
+      saved: true,
+    })));
+    addOpenedDocuments(openedDocuments);
     event.target.value = "";
   };
 
-  const saveFile = () => {
-    const latest = mode === "write" ? syncFromWrite() : markdown;
-    const url = URL.createObjectURL(new Blob([latest], { type: "text/markdown;charset=utf-8" }));
+  const openFiles = async () => {
+    const pickerWindow = window as FilePickerWindow;
+    if (!pickerWindow.showOpenFilePicker) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const handles = await pickerWindow.showOpenFilePicker({ multiple: true, types: markdownFileTypes });
+      const openedDocuments = await Promise.all(handles.map(async (fileHandle): Promise<EditorDocument> => {
+        const file = await fileHandle.getFile();
+        return {
+          id: crypto.randomUUID(),
+          filename: normalizeMarkdownFilename(file.name),
+          markdown: await file.text(),
+          saved: true,
+          fileHandle,
+        };
+      }));
+      addOpenedDocuments(openedDocuments);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("DraftMD could not open the native file picker.", error);
+      fileInputRef.current?.click();
+    }
+  };
+
+  const downloadFile = (content: string, downloadName: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = filename.endsWith(".md") || filename.endsWith(".markdown") ? filename : `${filename}.md`;
+    link.download = normalizeMarkdownFilename(downloadName);
     link.click();
     URL.revokeObjectURL(url);
-    updateActiveDocument({ markdown: latest, saved: true });
+  };
+
+  const saveFileAs = async (content?: string) => {
+    const latest = content ?? (mode === "write" ? syncFromWrite() : markdown);
+    const documentId = activeDocument.id;
+    const pickerWindow = window as FilePickerWindow;
+
+    if (pickerWindow.showSaveFilePicker) {
+      try {
+        const fileHandle = await pickerWindow.showSaveFilePicker({ suggestedName: normalizeMarkdownFilename(filename), types: markdownFileTypes });
+        if (await writeFileHandle(fileHandle, latest)) {
+          setDocuments((current) => current.map((item) => item.id === documentId ? {
+            ...item,
+            filename: normalizeMarkdownFilename(fileHandle.name),
+            markdown: latest,
+            saved: true,
+            fileHandle,
+          } : item));
+        }
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("DraftMD could not save through the native file picker.", error);
+      }
+    }
+
+    downloadFile(latest, filename);
+    setDocuments((current) => current.map((item) => item.id === documentId ? { ...item, markdown: latest, saved: true } : item));
+  };
+
+  const saveFile = async () => {
+    const latest = mode === "write" ? syncFromWrite() : markdown;
+    const documentId = activeDocument.id;
+    if (!activeDocument.fileHandle) {
+      await saveFileAs(latest);
+      return;
+    }
+
+    try {
+      if (await writeFileHandle(activeDocument.fileHandle, latest)) {
+        setDocuments((current) => current.map((item) => item.id === documentId ? { ...item, markdown: latest, saved: true } : item));
+        return;
+      }
+    } catch (error) {
+      console.error("DraftMD could not update the original file.", error);
+    }
+
+    await saveFileAs(latest);
   };
 
   const switchMode = (nextMode: ViewMode) => {
@@ -368,8 +612,9 @@ export default function Home() {
           <span className={saved ? "status saved" : "status"}>{saved ? "Saved" : "Unsaved"}</span>
         </div>
         <div className="header-actions">
-          <input ref={fileInputRef} type="file" accept=".md,.markdown,text/markdown,text/plain" multiple hidden onChange={openFile} />
-          <button className="text-button" onClick={() => fileInputRef.current?.click()}><Icon name="folder" /> Open</button>
+          <input ref={fileInputRef} type="file" accept=".md,.markdown,text/markdown,text/plain" multiple hidden onChange={openFileInput} />
+          <button className="text-button" onClick={openFiles}><Icon name="folder" /> Open</button>
+          <button className="text-button" onClick={() => saveFileAs()}><Icon name="file" /> Save As</button>
           <button className="primary-button" onClick={saveFile}><Icon name="save" /> Save</button>
           <button className="icon-button" aria-label={dark ? "Use light theme" : "Use dark theme"} onClick={() => setDark(!dark)}><Icon name={dark ? "sun" : "moon"} /></button>
         </div>
