@@ -1,0 +1,62 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const projectRoot = new URL("../", import.meta.url);
+
+async function render() {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+
+  return worker.fetch(
+    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+}
+
+test("production build serves DraftMD", async () => {
+  const response = await render();
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+  const html = await response.text();
+  assert.match(html, /DraftMD/i);
+  assert.match(html, /Visual Markdown Editor/i);
+  assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
+});
+
+test("release source contains the required editor capabilities", async () => {
+  const [page, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher] = await Promise.all([
+    readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("package.json", projectRoot), "utf8"),
+    readFile(new URL("README.md", projectRoot), "utf8"),
+    readFile(new URL("scripts/open-browser.mjs", projectRoot), "utf8"),
+    readFile(new URL("start-windows.bat", projectRoot), "utf8"),
+    readFile(new URL("start-unix.sh", projectRoot), "utf8"),
+  ]);
+
+  assert.match(page, /useDeferredValue/);
+  assert.match(page, /Raw Markdown/);
+  assert.match(page, /Document outline/);
+  assert.match(page, /Choose image from device/);
+  assert.match(page, /https:\/\/github\.com\/3badiii/);
+  assert.match(page, /multiple hidden onChange=\{openFile\}/);
+  assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
+  assert.match(packageJson, /"version": "1\.0\.0"/);
+  assert.match(packageJson, /"name": "draftmd"/);
+  assert.doesNotMatch(packageJson, /drizzle|tailwind/i);
+  assert.match(readme, /npm run check/);
+  assert.match(readme, /3badiii/);
+  assert.match(readme, /https:\/\/github\.com\/3badiii/);
+  assert.match(readme, /public\/screenshots\/draftmd-light\.png/);
+  assert.match(readme, /public\/screenshots\/draftmd-dark\.png/);
+  assert.match(browserLauncher, /xdg-open/);
+  assert.match(browserLauncher, /process\.platform === "darwin"/);
+  assert.match(browserLauncher, /process\.platform === "win32"/);
+  assert.match(windowsLauncher, /open-browser\.mjs/);
+  assert.match(windowsLauncher, /OpenJS\.NodeJS\.LTS/);
+  assert.match(windowsLauncher, /cd \/d "%~dp0"/);
+  assert.match(unixLauncher, /open-browser\.mjs/);
+});
