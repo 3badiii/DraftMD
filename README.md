@@ -6,7 +6,7 @@
 
 Write visually, edit the raw Markdown, preview the result, and save clean `.md` files without sending your documents to a server.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-0969da?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-1.0.0-0969da?style=flat-square)](https://github.com/3badiii/DraftMD/releases)
 [![License](https://img.shields.io/badge/license-MIT-1f883d?style=flat-square)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-087ea4?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
@@ -20,12 +20,12 @@ Write visually, edit the raw Markdown, preview the result, and save clean `.md` 
 
 ## Preview
 
-![DraftMD light theme](public/screenshots/draftmd-light.png)
+![DraftMD dark theme](public/screenshots/draftmd-dark.png)
 
 <details>
-<summary><strong>View the dark theme</strong></summary>
+<summary><strong>View the light theme</strong></summary>
 
-![DraftMD dark theme](public/screenshots/draftmd-dark.png)
+![DraftMD light theme](public/screenshots/draftmd-light.png)
 
 </details>
 
@@ -44,7 +44,7 @@ Documents are processed locally in the browser. DraftMD has no account system, s
 | Rendered preview | Review GitHub-style output before saving |
 | Multi-document tabs | Open and switch between several files in one session |
 | Local-first processing | Keep document content on the device |
-| Lightweight setup | Start the editor with one script and no database |
+| Lightweight setup | Start the editor with one script and no server-side database |
 
 ## Features
 
@@ -59,7 +59,7 @@ Documents are processed locally in the browser. DraftMD has no account system, s
 - Save supported files back to their original location or use Save As for a new copy
 - Insert links without unsupported browser prompts
 - Insert remote or local images with optional width and height
-- GitHub-inspired light and dark themes
+- Dark-first GitHub-inspired themes with a saved light or dark preference
 - Responsive layouts for mobile, laptop, and large displays
 - Deferred preview and outline rendering for smoother typing
 - Sanitized rendered HTML for safer previews
@@ -74,7 +74,7 @@ Documents are processed locally in the browser. DraftMD has no account system, s
 
 ### Windows
 
-1. Download the repository as a ZIP.
+1. [Download the repository as a ZIP](https://github.com/3badiii/DraftMD/archive/refs/heads/main.zip).
 2. Extract the ZIP.
 3. Double-click `start-windows.bat`.
 
@@ -201,7 +201,7 @@ draftmd/
 - Rendered HTML is sanitized with DOMPurify.
 - Script, style, iframe, object, and embed elements are blocked from rendered documents.
 - Inline color attributes are removed to preserve readability in both themes.
-- DraftMD does not require an account, API key, database, or analytics connection.
+- DraftMD does not require an account, API key, server-side database, or analytics connection.
 
 ## Performance
 
