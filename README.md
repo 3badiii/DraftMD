@@ -177,6 +177,34 @@ npm run build
 npm run start
 ```
 
+## Docker and Synology NAS
+
+DraftMD includes a multi-stage Docker image that runs the Vinext standalone production server as a non-root user. No database or persistent Docker volume is required because documents and recovery sessions remain in each user's browser.
+
+### Run with Docker Compose
+
+```bash
+docker compose up --build -d
+```
+
+Open `http://localhost:3000`. Stop the service with:
+
+```bash
+docker compose down
+```
+
+### Deploy with Synology Container Manager
+
+1. Install `Container Manager` from Synology Package Center.
+2. In File Station, create a folder such as `/volume1/docker/draftmd`.
+3. Upload the complete repository into that folder. Do not upload `node_modules`, `dist`, `.next`, `.vinext`, or `.wrangler`.
+4. Open `Container Manager`, select `Project`, and then select `Create`.
+5. Enter `draftmd` as the project name and select the uploaded folder as the project path.
+6. Use the existing `docker-compose.yml` file as the project source.
+7. Build and start the project, then open `http://NAS_IP:3000`.
+
+For direct write-back to opened files, access DraftMD through HTTPS. Browsers may limit the File System Access API on an insecure LAN address and fall back to file upload and download. Synology Web Station or Login Portal can expose the container through an HTTPS reverse proxy after the container is running.
+
 ## Project structure
 
 ```text
@@ -191,6 +219,9 @@ draftmd/
 |   `-- open-browser.mjs  # Cross-platform automatic browser launcher
 |-- tests/                # Automated release checks
 |-- worker/               # Production worker entry point
+|-- .dockerignore         # Files excluded from the Docker build context
+|-- Dockerfile            # Multi-stage standalone production image
+|-- docker-compose.yml    # Local and Synology container configuration
 |-- start-unix.sh         # Quick start for macOS and Linux
 |-- start-windows.bat     # Quick start for Windows
 |-- package.json
