@@ -66,6 +66,8 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 .format-group { display: flex; align-items: center; gap: 2px; }
 .format-group button { min-width: 34px; height: 32px; padding: 0 8px; border-radius: 5px; color: var(--text); font-size: 12px; font-weight: 600; }
 .format-group button:hover { background: var(--surface-muted); color: var(--accent); }
+.format-group button.is-active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent); }
+.format-group button.is-active:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
 .heading-group button:nth-child(n+4) { color: var(--muted); }
 .format-bold { font-size: 14px !important; font-weight: 800 !important; }
 .format-italic { font-family: Georgia, serif; font-size: 15px !important; font-style: italic; }
@@ -120,6 +122,8 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 .markdown-body a { color: var(--accent); text-decoration: none; }
 .markdown-body a:hover { text-decoration: underline; }
 .markdown-body img { max-width: 100%; border-radius: 6px; background: var(--surface); }
+.editor.markdown-body img { cursor: pointer; transition: outline-color .15s ease, box-shadow .15s ease; }
+.editor.markdown-body img:hover { outline: 2px solid var(--accent); outline-offset: 3px; box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent); }
 .markdown-body hr { height: .25em; margin: 24px 0; padding: 0; border: 0; background: var(--border-muted); }
 .markdown-body code { padding: .2em .4em; border-radius: 6px; background: var(--code-bg); font: 85% var(--font-geist-mono), ui-monospace, monospace; }
 .markdown-body pre { overflow: auto; padding: 16px; border-radius: 6px; background: var(--pre-bg); font-size: 85%; line-height: 1.45; }
@@ -162,6 +166,7 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 .dimension-section { display: grid; gap: 7px; }
 .dimension-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .dimension-section > small { color: var(--muted); font-size: 11px; }
+.table-dialog-note { margin-top: -6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .insert-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .insert-dialog-actions button { height: 34px; padding: 0 13px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 600; }
 .dialog-cancel { background: var(--surface-muted); }

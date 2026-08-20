@@ -2,7 +2,6 @@
 .github
 .next
 .vinext
-.wrangler
 dist
 node_modules
 coverage

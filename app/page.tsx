@@ -29,7 +29,37 @@ type StoredSession = {
   dark: boolean;
   outlineOpen: boolean;
 };
-type InsertDialog = { kind: "link" | "image"; url: string; label: string; width: string; height: string; fileName?: string; error?: string };
+type InsertDialog = { kind: "link" | "image"; url: string; label: string; width: string; height: string; editing?: boolean; fileName?: string; error?: string };
+type TableDialog = { rows: string; columns: string };
+type ActiveFormats = {
+  block: string;
+  bold: boolean;
+  italic: boolean;
+  strike: boolean;
+  code: boolean;
+  unorderedList: boolean;
+  orderedList: boolean;
+  taskList: boolean;
+  quote: boolean;
+  link: boolean;
+  table: boolean;
+  codeBlock: boolean;
+};
+
+const emptyActiveFormats: ActiveFormats = {
+  block: "",
+  bold: false,
+  italic: false,
+  strike: false,
+  code: false,
+  unorderedList: false,
+  orderedList: false,
+  taskList: false,
+  quote: false,
+  link: false,
+  table: false,
+  codeBlock: false,
+};
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -149,8 +179,30 @@ function normalizeImageDimension(value: string) {
   return String(Math.min(4000, Math.max(1, parsed)));
 }
 
+function findInlineCodeForRange(editor: HTMLElement, range: Range) {
+  const boundaryElements = [range.startContainer, range.endContainer].map((node) => (
+    node instanceof Element ? node : node.parentElement
+  ));
+  for (const boundary of boundaryElements) {
+    const code = boundary?.closest("code");
+    if (code instanceof HTMLElement && !code.closest("pre") && editor.contains(code)) return code;
+  }
+  for (const code of editor.querySelectorAll<HTMLElement>("code")) {
+    if (!code.closest("pre") && range.intersectsNode(code)) return code;
+  }
+  return null;
+}
+
 function normalizeMarkdownFilename(value: string) {
   return /\.(md|markdown)$/i.test(value) ? value : `${value}.md`;
+}
+
+function createDocumentId() {
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `document-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 async function writeFileHandle(handle: DraftFileHandle, content: string) {
@@ -264,6 +316,7 @@ export default function Home() {
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
+  const editingImageRef = useRef<HTMLImageElement | null>(null);
   const [documents, setDocuments] = useState<EditorDocument[]>([{ id: "welcome", filename: "README.md", markdown: starterMarkdown, saved: true }]);
   const [activeId, setActiveId] = useState("welcome");
   const [mode, setMode] = useState<ViewMode>("write");
@@ -271,6 +324,8 @@ export default function Home() {
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [outlineFilter, setOutlineFilter] = useState("");
   const [insertDialog, setInsertDialog] = useState<InsertDialog | null>(null);
+  const [tableDialog, setTableDialog] = useState<TableDialog | null>(null);
+  const [activeFormats, setActiveFormats] = useState<ActiveFormats>(emptyActiveFormats);
   const [sessionReady, setSessionReady] = useState(false);
   const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
   const [dragOverDocumentId, setDragOverDocumentId] = useState<string | null>(null);
@@ -332,10 +387,107 @@ export default function Home() {
     return nextMarkdown;
   }, [markdown, updateActiveDocument]);
 
+  const updateFormattingState = useCallback(() => {
+    if (mode !== "write" || !editorRef.current) {
+      setActiveFormats(emptyActiveFormats);
+      return;
+    }
+    const selection = window.getSelection();
+    const anchorNode = selection?.anchorNode;
+    const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    if (!anchorElement || !editorRef.current.contains(anchorElement)) return;
+    const listItem = anchorElement.closest("li");
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const code = range ? findInlineCodeForRange(editorRef.current, range) : null;
+    const block = anchorElement.closest("h1, h2, h3, h4, h5, h6, p, blockquote, pre");
+    const commandState = (command: string) => {
+      try {
+        return document.queryCommandState(command);
+      } catch {
+        return false;
+      }
+    };
+    const commandBlock = document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "");
+    setActiveFormats({
+      block: block?.tagName.toLowerCase() || commandBlock,
+      bold: commandState("bold"),
+      italic: commandState("italic"),
+      strike: commandState("strikeThrough"),
+      code: Boolean(code && !code.closest("pre")),
+      unorderedList: commandState("insertUnorderedList"),
+      orderedList: commandState("insertOrderedList"),
+      taskList: Boolean(listItem?.querySelector('input[type="checkbox"]')),
+      quote: Boolean(anchorElement.closest("blockquote")),
+      link: Boolean(anchorElement.closest("a")),
+      table: Boolean(anchorElement.closest("table")),
+      codeBlock: Boolean(anchorElement.closest("pre")),
+    });
+  }, [mode]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(updateFormattingState);
+    if (mode !== "write") return () => window.cancelAnimationFrame(frame);
+    document.addEventListener("selectionchange", updateFormattingState);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", updateFormattingState);
+    };
+  }, [mode, updateFormattingState]);
+
+  const restoreEditorSelection = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    const currentRange = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const selectionIsInEditor = Boolean(currentRange && editor?.contains(currentRange.commonAncestorContainer));
+    if (editor && document.activeElement !== editor) editor.focus({ preventScroll: true });
+    if (!selectionIsInEditor && savedRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
+    return selection;
+  };
+
   const format = (command: string, value?: string) => {
-    editorRef.current?.focus();
+    restoreEditorSelection();
     document.execCommand(command, false, value);
+    savedRangeRef.current = null;
     syncFromWrite();
+    window.requestAnimationFrame(updateFormattingState);
+  };
+
+  const toggleInlineCode = () => {
+    const editor = editorRef.current;
+    const selection = restoreEditorSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!editor || !selection || !range || !editor.contains(range.commonAncestorContainer)) return;
+    const code = findInlineCodeForRange(editor, range);
+    if (code) {
+      const parent = code.parentNode;
+      if (parent) {
+        while (code.firstChild) parent.insertBefore(code.firstChild, code);
+        code.remove();
+      }
+    } else {
+      const selectedText = selection.toString();
+      const codeElement = document.createElement("code");
+      codeElement.textContent = selectedText || "code";
+      range.deleteContents();
+      range.insertNode(codeElement);
+      const codeRange = document.createRange();
+      codeRange.selectNodeContents(codeElement);
+      selection.removeAllRanges();
+      selection.addRange(codeRange);
+    }
+    savedRangeRef.current = null;
+    syncFromWrite();
+    window.requestAnimationFrame(updateFormattingState);
+  };
+
+  const preserveToolbarSelection = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    savedRangeRef.current = range && editorRef.current?.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
   };
 
   const insertHtml = (html: string) => format("insertHTML", DOMPurify.sanitize(html));
@@ -349,12 +501,42 @@ export default function Home() {
     const selection = window.getSelection();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     savedRangeRef.current = range && editorRef.current?.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
+    editingImageRef.current = null;
     setInsertDialog({ kind, url: "https://", label: selection?.toString() || (kind === "image" ? "Image" : ""), width: "", height: "" });
+  };
+
+  const editImage = (image: HTMLImageElement) => {
+    editingImageRef.current = image;
+    savedRangeRef.current = null;
+    setInsertDialog({
+      kind: "image",
+      editing: true,
+      url: image.getAttribute("src") || "",
+      label: image.getAttribute("alt") || "Image",
+      width: image.getAttribute("width") || "",
+      height: image.getAttribute("height") || "",
+    });
+  };
+
+  const handleEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (target instanceof HTMLImageElement) editImage(target);
+  };
+
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter") return;
+    const anchorNode = window.getSelection()?.anchorNode;
+    const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement;
+    const image = anchorElement?.closest("img");
+    if (!(image instanceof HTMLImageElement)) return;
+    event.preventDefault();
+    editImage(image);
   };
 
   const closeInsertDialog = () => {
     setInsertDialog(null);
     savedRangeRef.current = null;
+    editingImageRef.current = null;
   };
 
   const submitInsertDialog = (event: React.FormEvent<HTMLFormElement>) => {
@@ -373,6 +555,18 @@ export default function Home() {
     } else {
       const width = normalizeImageDimension(insertDialog.width);
       const height = normalizeImageDimension(insertDialog.height);
+      const editingImage = editingImageRef.current;
+      if (insertDialog.editing && editingImage) {
+        editingImage.setAttribute("src", url);
+        editingImage.setAttribute("alt", insertDialog.label.trim() || "Image");
+        if (width) editingImage.setAttribute("width", width);
+        else editingImage.removeAttribute("width");
+        if (height) editingImage.setAttribute("height", height);
+        else editingImage.removeAttribute("height");
+        syncFromWrite();
+        closeInsertDialog();
+        return;
+      }
       const sizeAttributes = `${width ? ` width="${width}"` : ""}${height ? ` height="${height}"` : ""}`;
       insertHtml(`<img src="${escapeHtml(url)}" alt="${escapeHtml(insertDialog.label.trim() || "Image")}"${sizeAttributes}><p><br></p>`);
     }
@@ -406,7 +600,39 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  const addTable = () => insertHtml("<table><thead><tr><th>Column 1</th><th>Column 2</th></tr></thead><tbody><tr><td>Value 1</td><td>Value 2</td></tr><tr><td>Value 3</td><td>Value 4</td></tr></tbody></table><p><br></p>");
+  const openTableDialog = () => {
+    if (mode !== "write" && editorRef.current) {
+      editorRef.current.innerHTML = markdownToHtml(markdown);
+      setMode("write");
+    }
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    savedRangeRef.current = range && editorRef.current?.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
+    setTableDialog({ rows: "3", columns: "2" });
+  };
+
+  const closeTableDialog = () => {
+    setTableDialog(null);
+    savedRangeRef.current = null;
+  };
+
+  const submitTableDialog = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!tableDialog) return;
+    const rows = Math.min(20, Math.max(1, Number.parseInt(tableDialog.rows, 10) || 1));
+    const columns = Math.min(12, Math.max(1, Number.parseInt(tableDialog.columns, 10) || 1));
+    const header = Array.from({ length: columns }, (_, index) => `<th>Column ${index + 1}</th>`).join("");
+    const body = Array.from({ length: Math.max(0, rows - 1) }, (_, rowIndex) => (
+      `<tr>${Array.from({ length: columns }, (_, columnIndex) => `<td>Row ${rowIndex + 2}, Column ${columnIndex + 1}</td>`).join("")}</tr>`
+    )).join("");
+    const selection = window.getSelection();
+    if (savedRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
+    insertHtml(`<table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table><p><br></p>`);
+    closeTableDialog();
+  };
   const addTaskList = () => insertHtml('<ul><li><input type="checkbox"> Task item</li><li><input type="checkbox" checked> Completed item</li></ul><p><br></p>');
   const addCodeBlock = () => {
     const selected = window.getSelection()?.toString() || "Write code here";
@@ -432,7 +658,7 @@ export default function Home() {
 
   const createDocument = () => {
     const document: EditorDocument = {
-      id: crypto.randomUUID(),
+      id: createDocumentId(),
       filename: `untitled-${documents.length + 1}.md`,
       markdown: "# New document\n",
       saved: false,
@@ -452,7 +678,7 @@ export default function Home() {
     if (!closingDocument.saved && !window.confirm(`Close ${closingDocument.filename} without saving?`)) return;
 
     if (documents.length === 1) {
-      const replacement: EditorDocument = { id: crypto.randomUUID(), filename: "untitled.md", markdown: "", saved: false };
+      const replacement: EditorDocument = { id: createDocumentId(), filename: "untitled.md", markdown: "", saved: false };
       setDocuments([replacement]);
       setActiveId(replacement.id);
       if (editorRef.current) editorRef.current.innerHTML = "";
@@ -506,7 +732,7 @@ export default function Home() {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
     const openedDocuments = await Promise.all(files.map(async (file): Promise<EditorDocument> => ({
-      id: crypto.randomUUID(),
+      id: createDocumentId(),
       filename: normalizeMarkdownFilename(file.name),
       markdown: await file.text(),
       saved: true,
@@ -527,7 +753,7 @@ export default function Home() {
       const openedDocuments = await Promise.all(handles.map(async (fileHandle): Promise<EditorDocument> => {
         const file = await fileHandle.getFile();
         return {
-          id: crypto.randomUUID(),
+          id: createDocumentId(),
           filename: normalizeMarkdownFilename(file.name),
           markdown: await file.text(),
           saved: true,
@@ -542,16 +768,16 @@ export default function Home() {
     }
   };
 
-  const downloadFile = (content: string, downloadName: string) => {
+  const downloadFile = useCallback((content: string, downloadName: string) => {
     const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = normalizeMarkdownFilename(downloadName);
     link.click();
     URL.revokeObjectURL(url);
-  };
+  }, []);
 
-  const saveFileAs = async (content?: string) => {
+  const saveFileAs = useCallback(async (content?: string) => {
     const latest = content ?? (mode === "write" ? syncFromWrite() : markdown);
     const documentId = activeDocument.id;
     const pickerWindow = window as FilePickerWindow;
@@ -577,9 +803,9 @@ export default function Home() {
 
     downloadFile(latest, filename);
     setDocuments((current) => current.map((item) => item.id === documentId ? { ...item, markdown: latest, saved: true } : item));
-  };
+  }, [activeDocument.id, downloadFile, filename, markdown, mode, syncFromWrite]);
 
-  const saveFile = async () => {
+  const saveFile = useCallback(async () => {
     const latest = mode === "write" ? syncFromWrite() : markdown;
     const documentId = activeDocument.id;
     if (!activeDocument.fileHandle) {
@@ -597,7 +823,18 @@ export default function Home() {
     }
 
     await saveFileAs(latest);
-  };
+  }, [activeDocument.fileHandle, activeDocument.id, markdown, mode, saveFileAs, syncFromWrite]);
+
+  useEffect(() => {
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (!event.repeat) void saveFile();
+    };
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [saveFile]);
 
   const switchMode = (nextMode: ViewMode) => {
     if (mode === "raw" && editorRef.current) editorRef.current.innerHTML = markdownToHtml(markdown);
@@ -678,29 +915,29 @@ export default function Home() {
           </div>
           <button className="new-document-button" onClick={createDocument} title="New document" aria-label="New document">+</button>
         </div>
-        <div className="formatbar" role="toolbar" aria-label="Formatting toolbar" onMouseDown={(event) => event.preventDefault()}>
+        <div className="formatbar" role="toolbar" aria-label="Formatting toolbar" onMouseDown={preserveToolbarSelection}>
           <div className="format-group heading-group">
-            <button onClick={() => formatBlock("p")} title="Paragraph">P</button>
-            {[1, 2, 3, 4, 5, 6].map((level) => <button key={level} onClick={() => formatBlock(`h${level}`)} title={`Heading ${level}`}>H{level}</button>)}
+            <button className={activeFormats.block === "p" ? "is-active" : ""} aria-pressed={activeFormats.block === "p"} onClick={() => formatBlock("p")} title="Paragraph">P</button>
+            {[1, 2, 3, 4, 5, 6].map((level) => <button key={level} className={activeFormats.block === `h${level}` ? "is-active" : ""} aria-pressed={activeFormats.block === `h${level}`} onClick={() => formatBlock(`h${level}`)} title={`Heading ${level}`}>H{level}</button>)}
           </div>
           <span className="divider" />
           <div className="format-group">
-            <button className="format-bold" onClick={() => format("bold")} title="Bold">B</button>
-            <button className="format-italic" onClick={() => format("italic")} title="Italic">I</button>
-            <button className="format-strike" onClick={() => format("strikeThrough")} title="Strikethrough">S</button>
-            <button className="format-code" onClick={() => insertHtml(`<code>${escapeHtml(window.getSelection()?.toString() || "code")}</code>`)} title="Inline code">&lt;/&gt;</button>
+            <button className={`format-bold ${activeFormats.bold ? "is-active" : ""}`} aria-pressed={activeFormats.bold} onClick={() => format("bold")} title="Bold">B</button>
+            <button className={`format-italic ${activeFormats.italic ? "is-active" : ""}`} aria-pressed={activeFormats.italic} onClick={() => format("italic")} title="Italic">I</button>
+            <button className={`format-strike ${activeFormats.strike ? "is-active" : ""}`} aria-pressed={activeFormats.strike} onClick={() => format("strikeThrough")} title="Strikethrough">S</button>
+            <button className={`format-code ${activeFormats.code ? "is-active" : ""}`} aria-pressed={activeFormats.code} onClick={toggleInlineCode} title="Inline code">&lt;/&gt;</button>
           </div>
           <span className="divider" />
           <div className="format-group">
-            <button onClick={() => format("insertUnorderedList")} title="Bullet list">• List</button>
-            <button onClick={() => format("insertOrderedList")} title="Numbered list">1. List</button>
-            <button onClick={addTaskList} title="Task list">☑ Tasks</button>
-            <button onClick={() => formatBlock("blockquote")} title="Quote">❝</button>
-            <button onClick={() => openInsertDialog("link")} title="Link">Link</button>
+            <button className={activeFormats.unorderedList ? "is-active" : ""} aria-pressed={activeFormats.unorderedList} onClick={() => format("insertUnorderedList")} title="Bullet list">• List</button>
+            <button className={activeFormats.orderedList ? "is-active" : ""} aria-pressed={activeFormats.orderedList} onClick={() => format("insertOrderedList")} title="Numbered list">1. List</button>
+            <button className={activeFormats.taskList ? "is-active" : ""} aria-pressed={activeFormats.taskList} onClick={addTaskList} title="Task list">☑ Tasks</button>
+            <button className={activeFormats.quote ? "is-active" : ""} aria-pressed={activeFormats.quote} onClick={() => formatBlock("blockquote")} title="Quote">❝</button>
+            <button className={activeFormats.link ? "is-active" : ""} aria-pressed={activeFormats.link} onClick={() => openInsertDialog("link")} title="Link">Link</button>
             <button onClick={() => openInsertDialog("image")} title="Image">Image</button>
-            <button onClick={addTable} title="Table">Table</button>
+            <button className={activeFormats.table ? "is-active" : ""} aria-pressed={activeFormats.table} onClick={openTableDialog} title="Table">Table</button>
             <button onClick={() => insertHtml("<hr><p><br></p>")} title="Horizontal rule">Rule</button>
-            <button className="wide-button" onClick={addCodeBlock} title="Code block">Code Block</button>
+            <button className={`wide-button ${activeFormats.codeBlock ? "is-active" : ""}`} aria-pressed={activeFormats.codeBlock} onClick={addCodeBlock} title="Code block">Code Block</button>
           </div>
         </div>
 
@@ -726,7 +963,7 @@ export default function Home() {
               </aside>
             )}
             <div className="paper-wrap">
-              <div ref={editorRef} className={`editor markdown-body ${mode === "write" ? "" : "is-hidden"}`} contentEditable suppressContentEditableWarning spellCheck role="textbox" aria-label="Visual Markdown editor" aria-multiline="true" onInput={syncFromWrite} onPaste={handlePaste} />
+              <div ref={editorRef} className={`editor markdown-body ${mode === "write" ? "" : "is-hidden"}`} contentEditable suppressContentEditableWarning spellCheck role="textbox" aria-label="Visual Markdown editor" aria-multiline="true" tabIndex={0} onInput={syncFromWrite} onPaste={handlePaste} onClick={handleEditorClick} onKeyDown={handleEditorKeyDown} onKeyUp={updateFormattingState} onMouseUp={updateFormattingState} />
               <textarea className={`raw-editor ${mode === "raw" ? "" : "is-hidden"}`} value={markdown} onChange={(event) => updateRaw(event.target.value)} spellCheck={false} aria-label="Raw Markdown source" />
               <article className={`preview markdown-body ${mode === "preview" ? "" : "is-hidden"}`} dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
@@ -739,7 +976,7 @@ export default function Home() {
           <section className="insert-dialog" role="dialog" aria-modal="true" aria-labelledby="insert-dialog-title">
             <form onSubmit={submitInsertDialog}>
               <div className="insert-dialog-header">
-                <h2 id="insert-dialog-title">Insert {insertDialog.kind === "link" ? "link" : "image"}</h2>
+                <h2 id="insert-dialog-title">{insertDialog.editing ? "Edit image" : `Insert ${insertDialog.kind === "link" ? "link" : "image"}`}</h2>
                 <button type="button" aria-label="Close" onClick={closeInsertDialog}>×</button>
               </div>
               <label>
@@ -779,7 +1016,29 @@ export default function Home() {
               )}
               <div className="insert-dialog-actions">
                 <button type="button" className="dialog-cancel" onClick={closeInsertDialog}>Cancel</button>
-                <button type="submit" className="dialog-submit">Insert {insertDialog.kind}</button>
+                <button type="submit" className="dialog-submit">{insertDialog.editing ? "Update image" : `Insert ${insertDialog.kind}`}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {tableDialog && (
+        <div className="modal-backdrop">
+          <section className="insert-dialog" role="dialog" aria-modal="true" aria-labelledby="table-dialog-title">
+            <form onSubmit={submitTableDialog}>
+              <div className="insert-dialog-header">
+                <h2 id="table-dialog-title">Insert table</h2>
+                <button type="button" aria-label="Close" onClick={closeTableDialog}>×</button>
+              </div>
+              <div className="dimension-fields">
+                <label><span>Rows</span><input type="number" min="1" max="20" value={tableDialog.rows} onChange={(event) => setTableDialog({ ...tableDialog, rows: event.target.value })} /></label>
+                <label><span>Columns</span><input type="number" min="1" max="12" value={tableDialog.columns} onChange={(event) => setTableDialog({ ...tableDialog, columns: event.target.value })} /></label>
+              </div>
+              <small className="table-dialog-note">The first row is used as the table header. Maximum: 20 rows and 12 columns.</small>
+              <div className="insert-dialog-actions">
+                <button type="button" className="dialog-cancel" onClick={closeTableDialog}>Cancel</button>
+                <button type="submit" className="dialog-submit">Insert table</button>
               </div>
             </form>
           </section>

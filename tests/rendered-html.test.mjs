@@ -1,34 +1,60 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const projectRoot = new URL("../", import.meta.url);
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+async function findAvailablePort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
 
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
+async function render() {
+  const port = await findAvailablePort();
+  const child = spawn(process.execPath, ["dist/standalone/server.js"], {
+    cwd: fileURLToPath(projectRoot),
+    env: { ...process.env, HOST: "127.0.0.1", PORT: String(port), NODE_ENV: "production" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let serverError = "";
+  child.stderr.on("data", (chunk) => { serverError += chunk.toString(); });
+  try {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/`, { headers: { accept: "text/html" } });
+        return { response, html: await response.text() };
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+    throw new Error(`Standalone server did not start. ${serverError}`);
+  } finally {
+    child.kill();
+  }
 }
 
 test("production build serves DraftMD", async () => {
-  const response = await render();
+  const { response, html } = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
-  const html = await response.text();
   assert.match(html, /DraftMD/i);
   assert.match(html, /Visual Markdown Editor/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
 });
 
 test("release source contains the required editor capabilities", async () => {
-  const [page, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, dockerfile, compose, dockerignore] = await Promise.all([
+  const [page, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, viteConfig, dockerfile, compose, dockerignore] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
     readFile(new URL("package.json", projectRoot), "utf8"),
     readFile(new URL("README.md", projectRoot), "utf8"),
@@ -36,6 +62,7 @@ test("release source contains the required editor capabilities", async () => {
     readFile(new URL("start-windows.bat", projectRoot), "utf8"),
     readFile(new URL("start-unix.sh", projectRoot), "utf8"),
     readFile(new URL("next.config.ts", projectRoot), "utf8"),
+    readFile(new URL("vite.config.ts", projectRoot), "utf8"),
     readFile(new URL("Dockerfile", projectRoot), "utf8"),
     readFile(new URL("docker-compose.yml", projectRoot), "utf8"),
     readFile(new URL(".dockerignore", projectRoot), "utf8"),
@@ -45,12 +72,46 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /Raw Markdown/);
   assert.match(page, /Document outline/);
   assert.match(page, /Choose image from device/);
+  assert.match(page, /const editingImageRef = useRef<HTMLImageElement \| null>/);
+  assert.match(page, /onClick=\{handleEditorClick\}/);
+  assert.match(page, /onKeyDown=\{handleEditorKeyDown\}/);
+  assert.match(page, /Update image/);
+  assert.match(page, /editingImage\.setAttribute\("width", width\)/);
+  assert.match(page, /editingImage\.setAttribute\("height", height\)/);
+  assert.match(page, /Insert table/);
+  assert.match(page, /The first row is used as the table header/);
+  assert.match(page, /const \[tableDialog, setTableDialog\]/);
+  assert.match(page, /Array\.from\(\{ length: columns \}/);
+  assert.match(page, /const \[activeFormats, setActiveFormats\]/);
+  assert.match(page, /document\.addEventListener\("selectionchange", updateFormattingState\)/);
+  assert.match(page, /aria-pressed=\{activeFormats\.bold\}/);
+  assert.match(page, /onKeyUp=\{updateFormattingState\}/);
+  assert.match(page, /onMouseUp=\{updateFormattingState\}/);
+  assert.match(page, /onMouseDown=\{preserveToolbarSelection\}/);
+  assert.match(page, /selection\.addRange\(savedRangeRef\.current\)/);
+  assert.match(page, /const selectionIsInEditor = Boolean/);
+  assert.match(page, /if \(!selectionIsInEditor && savedRangeRef\.current && selection\)/);
+  assert.match(page, /bold: commandState\("bold"\)/);
+  assert.doesNotMatch(page, /bold: commandState\("bold"\) \|\|/);
+  assert.match(page, /const toggleInlineCode = \(\) =>/);
+  assert.match(page, /while \(code\.firstChild\) parent\.insertBefore\(code\.firstChild, code\)/);
+  assert.match(page, /onClick=\{toggleInlineCode\}/);
+  assert.match(page, /function findInlineCodeForRange/);
+  assert.match(page, /range\.intersectsNode\(code\)/);
+  assert.match(page, /range\.insertNode\(codeElement\)/);
+  assert.match(page, /codeRange\.selectNodeContents\(codeElement\)/);
   assert.match(page, /https:\/\/github\.com\/3badiii/);
   assert.match(page, /multiple hidden onChange=\{openFileInput\}/);
   assert.match(page, /showOpenFilePicker/);
   assert.match(page, /showSaveFilePicker/);
   assert.match(page, /!window\.isSecureContext \|\| !pickerWindow\.showOpenFilePicker/);
   assert.match(page, /window\.isSecureContext && pickerWindow\.showSaveFilePicker/);
+  assert.match(page, /window\.addEventListener\("keydown", handleSaveShortcut\)/);
+  assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\)/);
+  assert.match(page, /event\.key\.toLowerCase\(\) !== "s"/);
+  assert.match(page, /if \(!event\.repeat\) void saveFile\(\)/);
+  assert.match(page, /const bytes = globalThis\.crypto\.getRandomValues/);
+  assert.doesNotMatch(page, /crypto\.randomUUID/);
   assert.match(page, /createWritable/);
   assert.match(page, /Save As/);
   assert.match(page, /indexedDB\.open/);
@@ -78,6 +139,8 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(windowsLauncher, /cd \/d "%~dp0"/);
   assert.match(unixLauncher, /open-browser\.mjs/);
   assert.match(nextConfig, /output: "standalone"/);
+  assert.match(viteConfig, /plugins: \[vinext\(\)\]/);
+  assert.match(viteConfig, /turndown: "turndown\/lib\/turndown\.browser\.es\.js"/);
   assert.match(dockerfile, /FROM node:22-bookworm-slim AS build/);
   assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /USER node/);

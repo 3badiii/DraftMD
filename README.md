@@ -156,7 +156,6 @@ DraftMD restores open documents and unsaved changes from local browser storage a
 - Marked
 - Turndown with the GFM plugin
 - DOMPurify
-- Cloudflare-compatible production worker
 
 ## Available commands
 
@@ -197,7 +196,7 @@ docker compose down
 
 1. Install `Container Manager` from Synology Package Center.
 2. In File Station, create a folder such as `/volume1/docker/draftmd`.
-3. Upload the complete repository into that folder. Do not upload `node_modules`, `dist`, `.next`, `.vinext`, or `.wrangler`.
+3. Upload the complete repository into that folder. Do not upload `node_modules`, `dist`, `.next`, or `.vinext`.
 4. Open `Container Manager`, select `Project`, and then select `Create`.
 5. Enter `draftmd` as the project name and select the uploaded folder as the project path.
 6. Use the existing `docker-compose.yml` file as the project source.
@@ -218,7 +217,6 @@ draftmd/
 |-- scripts/
 |   `-- open-browser.mjs  # Cross-platform automatic browser launcher
 |-- tests/                # Automated release checks
-|-- worker/               # Production worker entry point
 |-- .dockerignore         # Files excluded from the Docker build context
 |-- Dockerfile            # Multi-stage standalone production image
 |-- docker-compose.yml    # Local and Synology container configuration

@@ -5,7 +5,13 @@
   "author": "3badiii",
   "private": true,
   "license": "MIT",
-  "keywords": ["markdown", "editor", "gfm", "wysiwyg", "notes"],
+  "keywords": [
+    "markdown",
+    "editor",
+    "gfm",
+    "wysiwyg",
+    "notes"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },
@@ -26,7 +32,6 @@
     "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
     "@eslint/js": "9.39.4",
     "@next/eslint-plugin-next": "16.2.6",
     "@types/node": "22.19.19",
@@ -44,8 +49,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.3",
     "vinext": "1.0.0-beta.2",
-    "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "vite": "8.0.13"
   },
   "type": "module"
 }
