@@ -77,6 +77,7 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(unixLauncher, /open-browser\.mjs/);
   assert.match(nextConfig, /output: "standalone"/);
   assert.match(dockerfile, /FROM node:22-bookworm-slim AS build/);
+  assert.match(dockerfile, /npm ci --omit=dev/);
   assert.match(dockerfile, /USER node/);
   assert.match(dockerfile, /CMD \["node", "server\.js"\]/);
   assert.match(compose, /restart: unless-stopped/);
