@@ -49,6 +49,8 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /multiple hidden onChange=\{openFileInput\}/);
   assert.match(page, /showOpenFilePicker/);
   assert.match(page, /showSaveFilePicker/);
+  assert.match(page, /!window\.isSecureContext \|\| !pickerWindow\.showOpenFilePicker/);
+  assert.match(page, /window\.isSecureContext && pickerWindow\.showSaveFilePicker/);
   assert.match(page, /createWritable/);
   assert.match(page, /Save As/);
   assert.match(page, /indexedDB\.open/);

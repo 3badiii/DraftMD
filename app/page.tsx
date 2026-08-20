@@ -517,7 +517,7 @@ export default function Home() {
 
   const openFiles = async () => {
     const pickerWindow = window as FilePickerWindow;
-    if (!pickerWindow.showOpenFilePicker) {
+    if (!window.isSecureContext || !pickerWindow.showOpenFilePicker) {
       fileInputRef.current?.click();
       return;
     }
@@ -556,7 +556,7 @@ export default function Home() {
     const documentId = activeDocument.id;
     const pickerWindow = window as FilePickerWindow;
 
-    if (pickerWindow.showSaveFilePicker) {
+    if (window.isSecureContext && pickerWindow.showSaveFilePicker) {
       try {
         const fileHandle = await pickerWindow.showSaveFilePicker({ suggestedName: normalizeMarkdownFilename(filename), types: markdownFileTypes });
         if (await writeFileHandle(fileHandle, latest)) {
