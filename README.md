@@ -243,15 +243,6 @@ draftmd/
 
 Preview and outline updates are deferred so typing remains responsive. Large images embedded as Data URLs still increase document size and memory use. Hosted URLs or repository image files are more efficient for large documentation projects.
 
-## Roadmap
-
-- [ ] Side-by-side editor and preview
-- [ ] Keyboard shortcuts
-- [ ] Find and replace
-- [ ] Drag-and-drop files and images
-- [ ] Export Markdown and related images as a ZIP
-- [ ] HTML export
-
 ## Contributing
 
 1. Fork the repository.
