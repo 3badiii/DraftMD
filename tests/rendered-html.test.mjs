@@ -54,9 +54,11 @@ test("production build serves DraftMD", async () => {
 });
 
 test("release source contains the required editor capabilities", async () => {
-  const [page, styles, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, viteConfig, dockerfile, compose, dockerignore] = await Promise.all([
+  const [page, styles, layout, favicon, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, viteConfig, dockerfile, compose, dockerignore] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
     readFile(new URL("app/globals.css", projectRoot), "utf8"),
+    readFile(new URL("app/layout.tsx", projectRoot), "utf8"),
+    readFile(new URL("public/favicon.svg", projectRoot), "utf8"),
     readFile(new URL("package.json", projectRoot), "utf8"),
     readFile(new URL("README.md", projectRoot), "utf8"),
     readFile(new URL("scripts/open-browser.mjs", projectRoot), "utf8"),
@@ -130,6 +132,9 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(styles, /\.app \{ --tabs-sticky-top: 60px;[^}]*grid-template-rows: 56px 1fr 34px;/);
   assert.match(styles, /\.brand-mark \{[^}]*width: 32px; height: 32px;/);
   assert.match(styles, /\.text-button, \.primary-button \{ height: 32px;/);
+  assert.match(layout, /icons:\s*\{/);
+  assert.match(layout, /\/favicon\.svg/);
+  assert.match(favicon, />MD<\/text>/);
   assert.doesNotMatch(page, /if \(mode === "write"\) syncFromWrite\(\)/);
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
