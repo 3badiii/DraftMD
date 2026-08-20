@@ -54,8 +54,9 @@ test("production build serves DraftMD", async () => {
 });
 
 test("release source contains the required editor capabilities", async () => {
-  const [page, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, viteConfig, dockerfile, compose, dockerignore] = await Promise.all([
+  const [page, styles, packageJson, readme, browserLauncher, windowsLauncher, unixLauncher, nextConfig, viteConfig, dockerfile, compose, dockerignore] = await Promise.all([
     readFile(new URL("app/page.tsx", projectRoot), "utf8"),
+    readFile(new URL("app/globals.css", projectRoot), "utf8"),
     readFile(new URL("package.json", projectRoot), "utf8"),
     readFile(new URL("README.md", projectRoot), "utf8"),
     readFile(new URL("scripts/open-browser.mjs", projectRoot), "utf8"),
@@ -121,6 +122,14 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /draggable/);
   assert.match(page, /onDragStart/);
   assert.match(page, /onDrop/);
+  assert.match(styles, /\.file-tabs-bar \{ position: sticky; top: var\(--tabs-sticky-top\);/);
+  assert.match(styles, /--tabs-sticky-height: 40px/);
+  assert.match(styles, /--toolbar-sticky-height: 46px/);
+  assert.match(styles, /\.formatbar \{ position: sticky; top: var\(--toolbar-sticky-top\);/);
+  assert.match(styles, /\.outline-panel \{ position: sticky; top: var\(--controls-sticky-bottom\);/);
+  assert.match(styles, /\.app \{ --tabs-sticky-top: 60px;[^}]*grid-template-rows: 56px 1fr 34px;/);
+  assert.match(styles, /\.brand-mark \{[^}]*width: 32px; height: 32px;/);
+  assert.match(styles, /\.text-button, \.primary-button \{ height: 32px;/);
   assert.doesNotMatch(page, /if \(mode === "write"\) syncFromWrite\(\)/);
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
