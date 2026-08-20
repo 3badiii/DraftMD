@@ -113,6 +113,18 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\)/);
   assert.match(page, /event\.code === "KeyS" \|\| event\.key\.toLowerCase\(\) === "s"/);
   assert.match(page, /if \(!event\.repeat\) void saveFile\(\)/);
+  assert.match(page, /const exportPdf = async \(\) =>/);
+  assert.match(page, /import\("html2pdf\.js"\)/);
+  assert.match(page, /format: "a4"/);
+  assert.match(page, /Exporting\.\.\./);
+  assert.doesNotMatch(page, /window\.print\(\)/);
+  assert.match(page, /document\.createElement\("article"\)/);
+  assert.match(page, /pdfDocument\.className = "markdown-body pdf-render-document"/);
+  assert.match(page, /function splitLongCodeBlocksForPdf\(root: HTMLElement, maxVisualLines = 24\)/);
+  assert.match(page, /splitLongCodeBlocksForPdf\(pdfDocument\)/);
+  assert.match(page, /chunkPre\.classList\.add\("pdf-code-chunk"\)/);
+  assert.match(page, /chunkPre\.classList\.add\("pdf-code-continuation"\)/);
+  assert.match(page, /headingGroup\.className = "pdf-heading-group"/);
   assert.match(page, /const bytes = globalThis\.crypto\.getRandomValues/);
   assert.doesNotMatch(page, /crypto\.randomUUID/);
   assert.match(page, /createWritable/);
@@ -132,6 +144,10 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(styles, /\.app \{ --tabs-sticky-top: 60px;[^}]*grid-template-rows: 56px 1fr 34px;/);
   assert.match(styles, /\.brand-mark \{[^}]*width: 32px; height: 32px;/);
   assert.match(styles, /\.text-button, \.primary-button \{ height: 32px;/);
+  assert.match(styles, /\.pdf-render-document pre \{[^}]*background: #f6f8fa !important;/);
+  assert.match(styles, /\.pdf-render-document \.pdf-code-chunk \{ break-inside: avoid; \}/);
+  assert.match(styles, /\.pdf-heading-group \{ break-inside: avoid; \}/);
+  assert.doesNotMatch(styles, /\.pdf-render-document \{[^}]*display: none;/);
   assert.match(layout, /icons:\s*\{/);
   assert.match(layout, /\/favicon\.svg/);
   assert.match(favicon, />MD<\/text>/);
@@ -139,6 +155,7 @@ test("release source contains the required editor capabilities", async () => {
   assert.doesNotMatch(page, /window\.prompt|\bprompt\(/);
   assert.match(packageJson, /"version": "1\.0\.0"/);
   assert.match(packageJson, /"name": "draftmd"/);
+  assert.match(packageJson, /"html2pdf\.js": "\^0\.14\.0"/);
   assert.doesNotMatch(packageJson, /drizzle|tailwind/i);
   assert.match(readme, /npm run check/);
   assert.match(readme, /3badiii/);

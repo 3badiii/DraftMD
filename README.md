@@ -58,6 +58,7 @@ Documents are processed locally in the browser. DraftMD has no account system, s
 - Searchable document outline with heading navigation
 - Open one or several `.md`, `.markdown`, or text files
 - Save supported files back to their original location or use Save As for a new copy
+- Export a clean A4 PDF without browser headers, footers, dates, or local URLs
 - Insert links without unsupported browser prompts
 - Insert remote or local images with optional width and height
 - Dark-first GitHub-inspired themes with a saved light or dark preference
@@ -130,6 +131,10 @@ Local images are embedded as Data URLs so the saved Markdown document remains se
 In Edge, Chrome, and other supported Chromium browsers, select `Open` to grant DraftMD access to a Markdown file. After editing, select `Save` to write changes back to that original file. The browser asks for write permission before the first update.
 
 Select `Save As` to choose a different name or location. Browsers without the File System Access API fall back to downloading a new `.md` file instead of overwriting the original.
+
+### Export a PDF
+
+Select `Export PDF` to download the rendered document as a clean A4 PDF. The exported file keeps headings, code blocks, tables, quotes, links, and images while excluding the editor interface and browser-generated headers or footers.
 
 DraftMD restores open documents and unsaved changes from local browser storage after a refresh. A browser may ask for file permission again before updating an original file in a restored session.
 
@@ -245,7 +250,7 @@ Preview and outline updates are deferred so typing remains responsive. Large ima
 - [ ] Find and replace
 - [ ] Drag-and-drop files and images
 - [ ] Export Markdown and related images as a ZIP
-- [ ] HTML and PDF export
+- [ ] HTML export
 
 ## Contributing
 

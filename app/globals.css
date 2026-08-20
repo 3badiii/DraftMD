@@ -136,6 +136,17 @@ button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke
 .markdown-body input[type="checkbox"] { margin: 0 .5em .25em -1.4em; vertical-align: middle; }
 .markdown-body .task-list-item { list-style-type: none; }
 .markdown-body del { color: var(--muted); }
+.pdf-render-document { width: 100%; min-height: 0; margin: 0; padding: 42px 46px 56px; background: #fff; color: #1f2328; color-scheme: light; --surface: #fff; --surface-muted: #f6f8fa; --border: #d0d7de; --border-muted: #d8dee4; --text: #1f2328; --muted: #59636e; --accent: #0969da; --code-bg: rgba(175, 184, 193, .2); --pre-bg: #f6f8fa; }
+.pdf-render-document pre { border: 1px solid #d8dee4; background: #f6f8fa !important; box-shadow: inset 0 0 0 1000px #f6f8fa; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pdf-render-document code { background: rgba(175, 184, 193, .2) !important; }
+.pdf-render-document pre code { background: transparent !important; }
+.pdf-render-document .pdf-code-chunk { break-inside: avoid; }
+.pdf-render-document .pdf-code-chunk + .pdf-code-chunk { margin-top: 8px; }
+.pdf-render-document img { max-width: 100%; }
+.pdf-heading-group { break-inside: avoid; }
+.pdf-render-document h1, .pdf-render-document h2, .pdf-render-document h3, .pdf-render-document h4, .pdf-render-document h5, .pdf-render-document h6 { break-after: avoid-page; }
+.pdf-render-document img, .pdf-render-document pre, .pdf-render-document blockquote, .pdf-render-document table { break-inside: avoid; }
+.text-button:disabled, .primary-button:disabled { cursor: wait; opacity: .65; transform: none; }
 .editor:empty::before { color: var(--muted); content: "Start writing or paste Markdown here..."; }
 
 .raw-editor { display: block; width: 100%; min-height: 720px; resize: vertical; padding: 36px 44px 80px; border: 0; outline: none; background: var(--surface); color: var(--text); font: 14px/1.65 var(--font-geist-mono), ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }

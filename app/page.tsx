@@ -108,6 +108,41 @@ function escapeHtml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
+function splitLongCodeBlocksForPdf(root: HTMLElement, maxVisualLines = 24) {
+  root.querySelectorAll<HTMLPreElement>("pre").forEach((pre) => {
+    const code = pre.querySelector<HTMLElement>("code");
+    if (!code) return;
+    const chunks: string[][] = [];
+    let currentChunk: string[] = [];
+    let currentVisualLines = 0;
+
+    (code.textContent || "").split("\n").forEach((line) => {
+      const visualLines = Math.max(1, Math.ceil(Math.max(line.length, 1) / 88));
+      if (currentChunk.length && currentVisualLines + visualLines > maxVisualLines) {
+        chunks.push(currentChunk);
+        currentChunk = [];
+        currentVisualLines = 0;
+      }
+      currentChunk.push(line);
+      currentVisualLines += visualLines;
+    });
+    if (currentChunk.length) chunks.push(currentChunk);
+    if (chunks.length < 2) return;
+
+    const fragment = document.createDocumentFragment();
+    chunks.forEach((chunk, index) => {
+      const chunkPre = pre.cloneNode(false) as HTMLPreElement;
+      const chunkCode = code.cloneNode(false) as HTMLElement;
+      chunkPre.classList.add("pdf-code-chunk");
+      if (index > 0) chunkPre.classList.add("pdf-code-continuation");
+      chunkCode.textContent = chunk.join("\n");
+      chunkPre.append(chunkCode);
+      fragment.append(chunkPre);
+    });
+    pre.replaceWith(fragment);
+  });
+}
+
 function markdownToHtml(markdown: string) {
   const rendered = marked.parse(markdown, { async: false }) as string;
   if (typeof window === "undefined") return rendered;
@@ -303,6 +338,7 @@ function Icon({ name }: { name: string }) {
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></>,
     folder: <><path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 6V5a2 2 0 0 1 2-2h4l2 3"/></>,
     save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></>,
+    print: <><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></>,
     eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
     edit: <><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></>,
     code: <><path d="M16 18l6-6-6-6M8 6l-6 6 6 6M14.5 4l-5 16"/></>,
@@ -326,6 +362,7 @@ export default function Home() {
   const [insertDialog, setInsertDialog] = useState<InsertDialog | null>(null);
   const [tableDialog, setTableDialog] = useState<TableDialog | null>(null);
   const [activeFormats, setActiveFormats] = useState<ActiveFormats>(emptyActiveFormats);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [draggedDocumentId, setDraggedDocumentId] = useState<string | null>(null);
   const [dragOverDocumentId, setDragOverDocumentId] = useState<string | null>(null);
@@ -825,6 +862,48 @@ export default function Home() {
     await saveFileAs(latest);
   }, [activeDocument.fileHandle, activeDocument.id, markdown, mode, saveFileAs, syncFromWrite]);
 
+  const exportPdf = async () => {
+    if (exportingPdf) return;
+    const latest = mode === "write" ? syncFromWrite() : markdown;
+    setExportingPdf(true);
+
+    try {
+      const pdfDocument = document.createElement("article");
+      pdfDocument.className = "markdown-body pdf-render-document";
+      pdfDocument.innerHTML = markdownToHtml(latest);
+      splitLongCodeBlocksForPdf(pdfDocument);
+      const pdfHeadings = Array.from(pdfDocument.querySelectorAll<HTMLElement>(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6"));
+      pdfHeadings.forEach((heading) => {
+        const firstContentBlock = heading.nextElementSibling;
+        if (!firstContentBlock || heading.parentElement !== pdfDocument) return;
+        const headingGroup = document.createElement("section");
+        headingGroup.className = "pdf-heading-group";
+        pdfDocument.insertBefore(headingGroup, heading);
+        headingGroup.append(heading, firstContentBlock);
+      });
+      const printableImages = Array.from(pdfDocument.querySelectorAll<HTMLImageElement>("img"));
+      await Promise.all(printableImages.map((image) => image.complete ? Promise.resolve() : new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      })));
+
+      const { default: html2pdf } = await import("html2pdf.js");
+      const pdfFilename = `${filename.replace(/\.(md|markdown)$/i, "") || "DraftMD"}.pdf`;
+      await html2pdf().set({
+        margin: [12, 12, 12, 12],
+        filename: pdfFilename,
+        image: { type: "jpeg", quality: 0.98 },
+        enableLinks: true,
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      }).from(pdfDocument).save();
+    } catch (error) {
+      console.error("DraftMD could not export the PDF.", error);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   useEffect(() => {
     const handleSaveShortcut = (event: KeyboardEvent) => {
       const isSaveKey = event.code === "KeyS" || event.key.toLowerCase() === "s";
@@ -875,6 +954,7 @@ export default function Home() {
           <input ref={fileInputRef} type="file" accept=".md,.markdown,text/markdown,text/plain" multiple hidden onChange={openFileInput} />
           <button className="text-button" onClick={openFiles}><Icon name="folder" /> Open</button>
           <button className="text-button" onClick={() => saveFileAs()}><Icon name="file" /> Save As</button>
+          <button className="text-button" onClick={() => void exportPdf()} disabled={exportingPdf}><Icon name="print" /> {exportingPdf ? "Exporting..." : "Export PDF"}</button>
           <button className="primary-button" onClick={saveFile}><Icon name="save" /> Save</button>
           <button className="icon-button" aria-label={dark ? "Use light theme" : "Use dark theme"} onClick={() => setDark(!dark)}><Icon name={dark ? "sun" : "moon"} /></button>
         </div>

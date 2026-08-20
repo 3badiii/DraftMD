@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.13",
+    "html2pdf.js": "^0.14.0",
     "marked": "^18.0.10",
     "react": "19.2.6",
     "react-dom": "19.2.6",
