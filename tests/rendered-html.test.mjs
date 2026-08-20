@@ -106,9 +106,9 @@ test("release source contains the required editor capabilities", async () => {
   assert.match(page, /showSaveFilePicker/);
   assert.match(page, /!window\.isSecureContext \|\| !pickerWindow\.showOpenFilePicker/);
   assert.match(page, /window\.isSecureContext && pickerWindow\.showSaveFilePicker/);
-  assert.match(page, /window\.addEventListener\("keydown", handleSaveShortcut\)/);
+  assert.match(page, /window\.addEventListener\("keydown", handleSaveShortcut, true\)/);
   assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\)/);
-  assert.match(page, /event\.key\.toLowerCase\(\) !== "s"/);
+  assert.match(page, /event\.code === "KeyS" \|\| event\.key\.toLowerCase\(\) === "s"/);
   assert.match(page, /if \(!event\.repeat\) void saveFile\(\)/);
   assert.match(page, /const bytes = globalThis\.crypto\.getRandomValues/);
   assert.doesNotMatch(page, /crypto\.randomUUID/);

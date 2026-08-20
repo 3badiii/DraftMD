@@ -827,13 +827,14 @@ export default function Home() {
 
   useEffect(() => {
     const handleSaveShortcut = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      const isSaveKey = event.code === "KeyS" || event.key.toLowerCase() === "s";
+      if (!(event.ctrlKey || event.metaKey) || !isSaveKey) return;
       event.preventDefault();
       if (!event.repeat) void saveFile();
     };
 
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => window.removeEventListener("keydown", handleSaveShortcut);
+    window.addEventListener("keydown", handleSaveShortcut, true);
+    return () => window.removeEventListener("keydown", handleSaveShortcut, true);
   }, [saveFile]);
 
   const switchMode = (nextMode: ViewMode) => {
